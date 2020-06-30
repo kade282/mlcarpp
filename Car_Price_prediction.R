@@ -370,3 +370,511 @@ cormat <- cor(Auto[ , names(Auto) %in% c("wheelbase", "carlength", "carwidth", "
                                          "citympg", "highwaympg", "price")])
 
 View(round(cormat, 2))
+
+############################ Przygotowanie danych pod proces budowy modelu regresji ######################################
+
+## Utworzenie nowej ramki danych
+
+carPrice <- Auto
+str(carPrice)
+
+## Usunięcie niepotrzebnych kolumn
+
+data.frame(cbind(names(carPrice), 1:ncol(carPrice)))
+
+carPrice <- carPrice[ , c(-1,-4)] 
+
+# Usuwanie identyfikatora samochodu z analizy, ponieważ jest to unikalny identyfikator i nie zawiera żadnych informacji
+# Po usunięciu nazwy modelu samochodu, tylko firma samochodowa zostanie uwzględniona w analizie
+
+# Zmienne dummies
+
+# Zmiene z dwoma poziomami
+
+levels(carPrice$fueltype) <- c(1,0)
+carPrice$fueltype <- as.numeric(levels(carPrice$fueltype))[carPrice$fueltype]
+
+levels(carPrice$aspiration) <- c(1,0)
+carPrice$aspiration <- as.numeric(levels(carPrice$aspiration))[carPrice$aspiration]
+
+levels(carPrice$doornumber) <- c(1,0)
+carPrice$doornumber <- as.numeric(levels(carPrice$doornumber))[carPrice$doornumber]
+
+levels(carPrice$enginelocation) <- c(1,0)
+carPrice$enginelocation <- as.numeric(levels(carPrice$enginelocation))[carPrice$enginelocation]
+
+# Zmienne z więcej niż dwoma poziomami
+
+dummy_symboling <- data.frame(model.matrix( ~symboling, data = carPrice))
+dummy_symboling <- dummy_symboling[,-1]
+carPrice <- cbind(carPrice[,!names(carPrice) == "symboling"], dummy_symboling)
+
+dummy_carCompany <- data.frame(model.matrix( ~carCompany, data = carPrice))
+dummy_carCompany <- dummy_carCompany[,-1]
+carPrice <- cbind(carPrice[,!names(carPrice) == "carCompany"], dummy_carCompany)
+
+dummy_carbody <- data.frame(model.matrix( ~carbody, data = carPrice))
+dummy_carbody <- dummy_carbody[,-1]
+carPrice <- cbind(carPrice[,!names(carPrice) == "carbody"], dummy_carbody)
+
+dummy_drivewheel <- data.frame(model.matrix( ~drivewheel, data = carPrice))
+dummy_drivewheel <- dummy_drivewheel[,-1]
+carPrice <- cbind(carPrice[,!names(carPrice) == "drivewheel"], dummy_drivewheel)
+
+dummy_enginetype <- data.frame(model.matrix( ~enginetype, data = carPrice))
+dummy_enginetype <- dummy_enginetype[,-1]
+carPrice <- cbind(carPrice[,!names(carPrice) == "enginetype"], dummy_enginetype)
+
+dummy_cylindernumber <- data.frame(model.matrix( ~cylindernumber, data = carPrice))
+dummy_cylindernumber <- dummy_cylindernumber[,-1]
+carPrice <- cbind(carPrice[,!names(carPrice) == "cylindernumber"], dummy_cylindernumber)
+
+dummy_fuelsystem <- data.frame(model.matrix( ~fuelsystem, data = carPrice))
+dummy_fuelsystem <- dummy_fuelsystem[,-1]
+carPrice <- cbind(carPrice[,!names(carPrice) == "fuelsystem"], dummy_fuelsystem)
+
+str(carPrice)
+
+data.frame(cbind(names(carPrice), 1:ncol(carPrice))) # 68 niezależnych zmiennych
+
+## Dane pochodne
+
+# Tworzenie zmiennej mocy silnika
+carPrice$enginepower <- carPrice$horsepower/carPrice$enginesize #powszechnie stosowane wskaźniki branżowe
+
+##################################### Proces budowy modelu regresji ###################################
+
+## Tworzenie testowego i treningowego datasetu
+
+set.seed(100)
+trainindices = sample(1:nrow(carPrice), 0.7*nrow(carPrice))
+train = carPrice[trainindices,]
+test = carPrice[-trainindices,]
+
+## Proces budowy modelu
+
+model1 <- lm(price ~ ., data = train)
+summary(model1)
+
+# Good Rsquared values but very large number of variables
+# Very few significant varibales
+# Some NA coefficients due to singularities i.e strong correlations seen
+
+## Using StepAIC
+
+stepAIC(model1, direction = "both")
+
+# Several variables have been eliminated
+
+model2 <- lm(price ~ aspiration + enginelocation + carlength + 
+               carwidth + curbweight + enginesize + stroke + peakrpm + citympg + 
+               symboling.1 + symboling0 + symboling3 + carCompanybmw + carCompanybuick + 
+               carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+               carCompanymercury + carCompanymitsubishi + carCompanynissan + 
+               carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+               carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+               carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+               carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+               enginetyperotor + cylindernumberfive + fuelsystem2bbl + fuelsystemmpfi, data = train)
+summary(model2)
+
+# lot more significant variables can be seen in model 2
+
+data.frame(vif(model2))
+
+# There are several variables with high VIF
+# carlenght, carwidth, curbweight, enginesize are correlated variables with high VIF
+# carlenght has highest p value, lets remove
+
+model3 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+               peakrpm + citympg + 
+               symboling.1 + symboling0 + symboling3 + carCompanybmw + carCompanybuick + 
+               carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+               carCompanymercury + carCompanymitsubishi + carCompanynissan + 
+               carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+               carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+               carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+               carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+               enginetyperotor + cylindernumberfive + fuelsystem2bbl + fuelsystemmpfi, data = train)
+summary(model3)
+
+data.frame(vif(model3))
+
+# didnt really help, let's remove some other insignificant variables
+# citympg and all symboling dummies are insignificant
+
+# removing citympg, highest p-value
+model4 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+               peakrpm + carCompanybmw + carCompanybuick +  symboling.1 + symboling0 + symboling3 +
+               carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+               carCompanymercury + carCompanymitsubishi + carCompanynissan + 
+               carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+               carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+               carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+               carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+               enginetyperotor + cylindernumberfive + fuelsystem2bbl + fuelsystemmpfi, data = train)
+summary(model4)
+
+data.frame(vif(model4))
+
+# Lets remove fuelsystemmpfi, it has highest p-value
+
+model5 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+               peakrpm + carCompanybmw + carCompanybuick +  symboling.1 + symboling0 + symboling3 +
+               carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+               carCompanymercury + carCompanymitsubishi + carCompanynissan + 
+               carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+               carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+               carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+               carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+               enginetyperotor + cylindernumberfive + fuelsystem2bbl, data = train)
+summary(model5)
+
+data.frame(vif(model5))
+
+# Remove fuelsystem2bbl. highest p-value
+
+model6 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+               peakrpm + carCompanybmw + carCompanybuick +  symboling.1 + symboling0 + symboling3 +
+               carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+               carCompanymercury + carCompanymitsubishi + carCompanynissan + 
+               carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+               carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+               carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+               carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+               enginetyperotor + cylindernumberfive, data = train)
+summary(model6)
+
+data.frame(vif(model6))
+
+# remove symboling0, highest p-value
+
+model7 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+               peakrpm + carCompanybmw + carCompanybuick +  symboling.1 + symboling3 +
+               carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+               carCompanymercury + carCompanymitsubishi + carCompanynissan + 
+               carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+               carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+               carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+               carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+               enginetyperotor + cylindernumberfive, data = train)
+summary(model7)
+
+data.frame(vif(model7))
+
+# remove symboling1, highest p-value
+
+model8 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+               peakrpm + carCompanybmw + carCompanybuick + symboling3 +
+               carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+               carCompanymercury + carCompanymitsubishi + carCompanynissan + 
+               carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+               carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+               carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+               carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+               enginetyperotor + cylindernumberfive, data = train)
+summary(model8)
+
+data.frame(vif(model8))
+
+# remove car company mercury, highest p-value, has only one data point anyway
+
+model9 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+               peakrpm + carCompanybmw + carCompanybuick + symboling3 +
+               carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+               carCompanymitsubishi + carCompanynissan + 
+               carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+               carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+               carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+               carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+               enginetyperotor + cylindernumberfive, data = train)
+summary(model9)
+
+data.frame(vif(model9))
+
+# remove symboling 3, highest p-value
+
+model10 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+                peakrpm + carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+                carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+                enginetyperotor + cylindernumberfive, data = train)
+summary(model10)
+
+data.frame(vif(model10))
+
+# remove cylinder number five, highest p-value
+
+model11 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+                peakrpm + carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + carbodyhardtop + carbodyhatchback + 
+                carbodysedan + carbodywagon + drivewheelrwd + enginetypeohc + 
+                enginetyperotor, data = train)
+summary(model11)
+
+data.frame(vif(model11))
+
+# remove carbody sedan, high p value and high VIF
+
+model12 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+                peakrpm + carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + carbodyhatchback + 
+                carbodyhardtop + carbodywagon + drivewheelrwd + enginetypeohc + 
+                enginetyperotor, data = train)
+summary(model12)
+
+data.frame(vif(model12))
+
+# Issue of high VIF in car body variables resolved, but carbody variables are now insignificant
+# removing carbody hardtop
+
+model13 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+                peakrpm + carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + carbodyhatchback + 
+                carbodywagon + drivewheelrwd + enginetypeohc + 
+                enginetyperotor, data = train)
+summary(model13)
+
+data.frame(vif(model13))
+
+# both remaining carbody variables are insignificant
+# removing carbody wagon
+
+model14 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+                peakrpm + carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + carbodyhatchback + 
+                + drivewheelrwd + enginetypeohc + 
+                enginetyperotor, data = train)
+summary(model14)
+
+data.frame(vif(model14))
+
+# removing the last carbody variable, carbody hatchback, insignificant
+
+model15 <- lm(price ~ aspiration + enginelocation + carwidth + curbweight + enginesize + stroke + 
+                peakrpm + carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + 
+                + drivewheelrwd + enginetypeohc + 
+                enginetyperotor, data = train)
+summary(model15)
+
+data.frame(vif(model15))
+
+# removing curbweight variable, high pvalue and high VIF
+
+model16 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                peakrpm + carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysaab + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + 
+                + drivewheelrwd + enginetypeohc + 
+                enginetyperotor, data = train)
+summary(model16)
+
+data.frame(vif(model16))
+
+# removing carcompany saab, high p value
+
+model17 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + peakrpm
+              + drivewheelrwd + enginetypeohc + 
+                enginetyperotor, data = train)
+summary(model17)
+
+data.frame(vif(model17))
+
+# removing engine type ohc, high p value
+
+model18 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanypeugeot + carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + peakrpm
+              + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model18)
+
+data.frame(vif(model18))
+
+# removing carcompany peugeot, high p value
+
+model19 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanyplymouth + carCompanyporsche + 
+                carCompanyrenault + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + peakrpm
+              + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model19)
+
+data.frame(vif(model19))
+
+# removing carcompany porsche, high p value
+
+model20 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanyplymouth +  
+                carCompanyrenault + carCompanysubaru + carCompanytoyota + 
+                carCompanyvolkswagen + peakrpm
+              + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model20)
+
+data.frame(vif(model20))
+
+# removing carcompany volkswagen, high p value
+
+model21 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyhonda + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanyplymouth +  
+                carCompanyrenault + carCompanysubaru + carCompanytoyota + 
+                + peakrpm + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model21)
+
+data.frame(vif(model21))
+
+# removing carcompany honda, high p value
+
+model22 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanyplymouth +  
+                carCompanyrenault + carCompanysubaru + carCompanytoyota + 
+                + peakrpm + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model22)
+
+data.frame(vif(model22))
+
+# removing carcompany renault, high p value
+
+model23 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanyplymouth +carCompanysubaru + carCompanytoyota + 
+                + peakrpm + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model23)
+
+data.frame(vif(model23))
+
+# removing carcompany toyota, high p value
+
+model24 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanynissan + 
+                carCompanyplymouth +carCompanysubaru + peakrpm + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model24)
+
+data.frame(vif(model24))
+
+# removing carcompany nissan, high p value
+
+model25 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyjaguar + carCompanymazda + 
+                carCompanymitsubishi + carCompanyplymouth +carCompanysubaru + peakrpm + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model25)
+
+data.frame(vif(model25))
+
+# removing carcompany mazda, high p value
+
+model26 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyjaguar + 
+                carCompanymitsubishi + carCompanyplymouth +carCompanysubaru + peakrpm + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model26)
+
+data.frame(vif(model26))
+
+# removing carcompany plymouth, high p value
+
+model27 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanydodge + carCompanyjaguar + 
+                carCompanymitsubishi + carCompanysubaru + peakrpm + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model27)
+
+data.frame(vif(model27))
+
+# removing carcompany dodge, high p value
+
+model28 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanyjaguar + 
+                carCompanymitsubishi + carCompanysubaru + peakrpm + drivewheelrwd + 
+                enginetyperotor, data = train)
+summary(model28)
+
+data.frame(vif(model28))
+
+# removing drivewheel rwd, high p value
+
+model29 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanyjaguar + 
+                carCompanymitsubishi + carCompanysubaru + peakrpm +  
+                enginetyperotor, data = train)
+summary(model29)
+
+data.frame(vif(model29))
+
+# removing carcompany mitsubishi, high p value
+
+model30 <- lm(price ~ aspiration + enginelocation + carwidth + enginesize + stroke + 
+                carCompanybmw + carCompanybuick + carCompanyjaguar + 
+                + carCompanysubaru + peakrpm +  
+                enginetyperotor, data = train)
+summary(model30)
+
+data.frame(vif(model30))
+
+# All variables are now highly significant, VIF values are also low
+
+## Model evaluation
+
+data.frame(names(test), 1:ncol(test)) # price is in column number 18
+test$test_price <- predict(model30, test[ , -18]) # running the model on test dataset
+
+rsquared <- cor(test$price,test$test_price)^2
+rsquared
+
+# Rsquared from test dataset is 0.84 and from training is 0.95, this is a reasonably accurate model
+
+############################################## Conclusions ###########################################
+
+# Model 30 predicts car price with sufficent accuracy, contains only highly significant and has little
+# to no multicollinearity
+
+# Key variables used for car price prediction
+# 1. Engine location - cars with rear engines are significantly costlier
+# 2. luxury car brand - bmw, buick and jaguar have significantly higher prices than other cars with same specs
+# 3. engine stroke, aspiration and stroke are key engine parameters controlling price
